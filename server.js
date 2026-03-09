@@ -47,9 +47,9 @@ if (process.env.NODE_ENV === "production") {
         res.sendFile(path.resolve(__dirname, "..", "frontend", "dist", "index.html"));
     });
 }
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 10000;
 
-app.listen(process.env.PORT, () => {
+app.listen(PORT, () => {
     console.log("server is running on http://localhost:" + PORT);
     connectDb();
 })
