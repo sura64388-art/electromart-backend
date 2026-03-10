@@ -19,16 +19,18 @@ const storeRefreshToken = async (userId, refreshToken) => {
 	await redis.set(`refresh_token:${userId}`, refreshToken, "EX", 7 * 24 * 60 * 60);
 };
 const setCookies = (res, accessToken, refreshToken) => {
+	const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
+
 	res.cookie("accessToken", accessToken, {
-		httpOnly: true, // prevent XSS attacks, cross site scripting attack
-		secure: process.env.NODE_ENV === "production",
-		sameSite: "strict", // prevents CSRF attack, cross-site request forgery attack
+		httpOnly: true, // prevent XSS
+		secure: isProduction, // only send over HTTPS in production
+		sameSite: isProduction ? "none" : "lax", // allow cross-site cookies in prod, lax in dev
 		maxAge: 15 * 60 * 1000, // 15 minutes
 	});
 	res.cookie("refreshToken", refreshToken, {
-		httpOnly: true, // prevent XSS attacks, cross site scripting attack
-		secure: process.env.NODE_ENV === "production",
-		sameSite: "strict", // prevents CSRF attack, cross-site request forgery attack
+		httpOnly: true, // prevent XSS
+		secure: isProduction, // only send over HTTPS in production
+		sameSite: isProduction ? "none" : "lax", // allow cross-site cookies in prod, lax in dev
 		maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 	});
 };
@@ -63,28 +65,51 @@ export const signup = async (req, res) => {
 export const login = async (req, res) => {
 	try {
 		const { email, password } = req.body;
-		const user = await User.findOne({ email });
 
-		if (user && (await user.comparePassword(password))) {
-			const { accessToken, refreshToken } = generateTokens(user._id);
-			await storeRefreshToken(user._id, refreshToken);
-			setCookies(res, accessToken, refreshToken);
-
-			res.json({
-				_id: user._id,
-				name: user.name,
-				email: user.email,
-				role: user.role,
-				avatar: user.avatar ?? "avatar1.png",
-				mobile: user.mobile ?? "",
-				address: user.address ?? null,
-			});
-		} else {
-			res.status(400).json({ message: "Invalid email or password" });
+		// 1. Basic validation
+		if (!email || !password) {
+			return res.status(400).json({ message: "Email and password are required" });
 		}
+
+		// 2. Find user (trim and lowercase email for consistency)
+		const user = await User.findOne({ email: email.trim().toLowerCase() });
+
+		// 3. Validate user and password
+		console.log(`Attempting login for: ${email}`);
+		if (user) {
+			const isMatch = await user.comparePassword(password);
+			console.log(`User found. Password match: ${isMatch}`);
+			if (isMatch) {
+				// Generate tokens
+				const { accessToken, refreshToken } = generateTokens(user._id);
+
+				// Store refresh token in Redis (Mock in dev)
+				await storeRefreshToken(user._id, refreshToken);
+
+				// Set cookies in response
+				setCookies(res, accessToken, refreshToken);
+
+				// Return user data (avoiding sensitive info)
+				return res.json({
+					_id: user._id,
+					name: user.name,
+					email: user.email,
+					role: user.role,
+					avatar: user.avatar ?? "avatar1.png",
+					mobile: user.mobile ?? "",
+					address: user.address ?? null,
+				});
+			}
+		} else {
+			console.log("User not found in DB");
+		}
+
+		// Log for server-side debugging
+		console.warn(`Failed login attempt for email: ${email}`);
+		return res.status(400).json({ message: "Invalid email or password" });
 	} catch (error) {
-		console.log("Error in login controller", error.message);
-		res.status(500).json({ message: error.message });
+		console.error("Error in login controller:", error.message);
+		return res.status(500).json({ message: "Internal server error", error: error.message });
 	}
 };
 export const logout = async (req, res) => {
@@ -95,8 +120,15 @@ export const logout = async (req, res) => {
 			await redis.del(`refresh_token:${decoded.userId}`);
 		}
 
-		res.clearCookie("accessToken");
-		res.clearCookie("refreshToken");
+		const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
+		const cookieOptions = {
+			httpOnly: true,
+			secure: isProduction,
+			sameSite: isProduction ? "none" : "lax",
+		};
+
+		res.clearCookie("accessToken", cookieOptions);
+		res.clearCookie("refreshToken", cookieOptions);
 		res.json({ message: "Logged out successfully" });
 	} catch (error) {
 		console.log("Error in logout controller", error.message);
@@ -120,11 +152,21 @@ export const refreshToken = async (req, res) => {
 
 		const accessToken = jwt.sign({ userId: decoded.userId }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "15m" });
 
+		const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
+
 		res.cookie("accessToken", accessToken, {
 			httpOnly: true,
-			secure: process.env.NODE_ENV === "production",
-			sameSite: "strict",
+			secure: isProduction,
+			sameSite: isProduction ? "none" : "lax",
 			maxAge: 15 * 60 * 1000,
+		});
+
+		// Also refresh the refreshToken expiration
+		res.cookie("refreshToken", refreshToken, {
+			httpOnly: true,
+			secure: isProduction,
+			sameSite: isProduction ? "none" : "lax",
+			maxAge: 7 * 24 * 60 * 60 * 1000,
 		});
 
 		res.json({ message: "Token refreshed successfully" });
@@ -317,14 +359,36 @@ export const updateAddress = async (req, res) => {
 		res.status(500).json({ message: error.message });
 	}
 };
-export const ADMIN = async () => {
-	const user = await User.insertOne({
-		name: "Utsav",
-		email: "admin123@admin.com",
-		password: "admin1234",
-		role: "admin"
-	})
-	console.log("inside admin")
-	await user.save()
-	return true
-}
+export const ADMIN = async (req, res) => {
+	try {
+		// Use environment variables or defaults to seed the admin
+		const adminName = process.env.ADMIN_NAME || "Muthuraj";
+		const adminEmail = (process.env.ADMIN_EMAIL || "muthur237@gmail.com").toLowerCase();
+		const adminPassword = process.env.ADMIN_PASS || "Muthuraj01@gmail.com";
+
+		const existingAdmin = await User.findOne({ email: adminEmail });
+		if (existingAdmin) {
+			return res.status(400).json({ message: "Admin already exists" });
+		}
+
+		const user = await User.create({
+			name: adminName,
+			email: adminEmail,
+			password: adminPassword,
+			role: "admin"
+		});
+
+		return res.status(201).json({
+			message: "Admin created successfully",
+			user: {
+				_id: user._id,
+				name: user.name,
+				email: user.email,
+				role: user.role,
+			}
+		});
+	} catch (error) {
+		console.error("Error seeding admin:", error.message);
+		return res.status(500).json({ message: "Failed to create admin", error: error.message });
+	}
+};

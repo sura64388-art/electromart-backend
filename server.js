@@ -1,5 +1,7 @@
-import express from "express";
 import dotenv from "dotenv";
+dotenv.config();
+
+import express from "express";
 import authRoute from "./routes/auth.route.js";
 import productRoutes from "./routes/product.route.js";
 import cartRoutes from "./routes/cart.route.js";
@@ -18,29 +20,43 @@ import cookieParser from "cookie-parser";
 import fileUpload from "express-fileupload";
 
 import cors from "cors";
-dotenv.config();
 
 const app = express();
 
+// Trust proxy is required for cross-domain cookies on platforms like Render/Vercel
+app.set("trust proxy", 1);
+
 // Middleware
-app.use(cors({
-    origin: function (origin, callback) {
-        const allowedOrigins = [
-            "https://electrical-frontend-kcad.vercel.app",
-            "https://electricial-frontend-kcad.vercel.app",
-            "http://localhost:5173",
-            "http://localhost:5174",
-            "http://localhost:5175",
-            "http://localhost:5000"
-        ];
-        if (!origin || allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+const allowedOrigins = [
+    "https://electrical-frontend-kcad.vercel.app",
+    "https://electricial-frontend-kcad.vercel.app",
+    "https://electrical-frontend-hop2.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:5180",
+    "http://localhost:5181",
+    "http://localhost:5182",
+];
+
+const corsOptions = {
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, curl, or same-origin)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
             callback(null, true);
         } else {
+            console.warn("CORS blocked origin:", origin);
             callback(new Error("Not allowed by CORS"));
         }
     },
     credentials: true,
-}));
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
