@@ -24,7 +24,21 @@ const app = express();
 
 // Middleware
 app.use(cors({
-    origin: ["https://electricial-frontend-kcad.vercel.app", "http://localhost:5173", "http://localhost:5000"],
+    origin: function (origin, callback) {
+        const allowedOrigins = [
+            "https://electrical-frontend-kcad.vercel.app",
+            "https://electricial-frontend-kcad.vercel.app",
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:5175",
+            "http://localhost:5000"
+        ];
+        if (!origin || allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
     credentials: true,
 }));
 app.use(express.json({ limit: "50mb" }));
