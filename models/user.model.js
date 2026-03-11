@@ -67,7 +67,8 @@ const userSchema = new mongoose.Schema(
 
     otp: String,
     otpExpire: Date,
-    loyaltyPoints: { type: Number, default: 0 }
+    loyaltyPoints: { type: Number, default: 0 },
+    googleId: { type: String, unique: true, sparse: true },
   },
   {
     timestamps: true,
