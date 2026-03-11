@@ -5,7 +5,10 @@ import cloudinary from "../lib/cloudinary.js";
 import sendEmail from "../lib/sendEmail.js";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
+import { OAuth2Client } from "google-auth-library";
 dotenv.config();
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const generateTokens = (userId) => {
 	const accessToken = jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, {
 		expiresIn: "15m",
@@ -110,6 +113,57 @@ export const login = async (req, res) => {
 	} catch (error) {
 		console.error("Error in login controller:", error.message);
 		return res.status(500).json({ message: "Internal server error", error: error.message });
+	}
+};
+
+export const googleLogin = async (req, res) => {
+	try {
+		const { credential } = req.body;
+		if (!credential) {
+			return res.status(400).json({ message: "Google credential is required" });
+		}
+
+		const ticket = await googleClient.verifyIdToken({
+			idToken: credential,
+			audience: process.env.GOOGLE_CLIENT_ID,
+		});
+
+		const { name, email, picture, sub } = ticket.getPayload();
+
+		let user = await User.findOne({ email });
+
+		if (!user) {
+			// Create new user if they don't exist
+			user = await User.create({
+				name,
+				email,
+				password: Math.random().toString(36).slice(-8) + sub.slice(-4), // Random password
+				avatar: picture,
+				googleId: sub,
+			});
+		} else if (!user.googleId) {
+			// Link existing user to Google if not already linked
+			user.googleId = sub;
+			if (!user.avatar) user.avatar = picture;
+			await user.save();
+		}
+
+		const { accessToken, refreshToken } = generateTokens(user._id);
+		await storeRefreshToken(user._id, refreshToken);
+		setCookies(res, accessToken, refreshToken);
+
+		res.json({
+			_id: user._id,
+			name: user.name,
+			email: user.email,
+			role: user.role,
+			avatar: user.avatar ?? "avatar1.png",
+			mobile: user.mobile ?? "",
+			address: user.address ?? null,
+		});
+	} catch (error) {
+		console.error("Error in googleLogin controller:", error.message);
+		res.status(500).json({ message: "Google Authentication failed", error: error.message });
 	}
 };
 export const logout = async (req, res) => {
