@@ -28,10 +28,7 @@ app.set("trust proxy", 1);
 
 // Middleware
 const allowedOrigins = [
-    "https://electrical-frontend-kcad.vercel.app",
-    "https://electricial-frontend-kcad.vercel.app",
-    "https://electrical-frontend-hop2.vercel.app",
-    "https://electromart-frontend-mu.vercel.app",
+    "https://electromart-frontend-nine.vercel.app",
     "http://localhost:5173",
     "http://localhost:5180",
     "http://localhost:5181",
