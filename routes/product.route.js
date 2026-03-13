@@ -1,7 +1,6 @@
 import express from "express";
 import {
-	getAllProducts, getFeaturedProducts, createProduct, updateProduct, deleteProduct, getRecommendedProducts, getProductsByCategory, toggleFeaturedProduct, getProductById, createProductReview, seedDefaultReviews
-
+	getAllProducts, getFeaturedProducts, createProduct, updateProduct, deleteProduct, getRecommendedProducts, getProductsByCategory, toggleFeaturedProduct, getProductById, createProductReview
 } from "../controllers/product.controller.js";
 import { adminRoute, protectRoute } from "../middleware/auth.middleware.js";
 const router = express.Router();
@@ -16,6 +15,5 @@ router.patch("/:id", protectRoute, adminRoute, toggleFeaturedProduct);
 router.delete("/:id", protectRoute, adminRoute, deleteProduct);
 router.get("/:id", getProductById);
 router.post("/:id/reviews", protectRoute, createProductReview);
-router.post("/seed-reviews/run", seedDefaultReviews); // One-time use: call once to seed default reviews
 
 export default router;
