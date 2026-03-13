@@ -339,14 +339,17 @@ export const updatePassword = async (req, res) => {
 export const sendOTP = async (req, res) => {
 	try {
 		const { email } = req.body;
+		const normalizedEmail = email.trim().toLowerCase();
 
-		const user = await User.findOne({ email });
+		const user = await User.findOne({ email: normalizedEmail });
 		if (!user) {
 			return res.status(404).json({ message: "User not found" });
 		}
 
 		const otp = Math.floor(100000 + Math.random() * 900000).toString();
-		console.log(otp);
+		console.log("------------------------------------------");
+		console.log(`PASSWORD RESET OTP FOR ${email}: ${otp}`);
+		console.log("------------------------------------------");
 		user.otp = otp;
 		user.otpExpire = Date.now() + 10 * 60 * 1000;
 		await user.save();
@@ -360,24 +363,42 @@ export const sendOTP = async (req, res) => {
 		res.json({ message: "OTP sent to email" });
 	} catch (error) {
 		console.error("Send OTP error", error);
-		res.status(500).json({ message: "Server error" });
+		const errorMessage = error.response?.body?.errors?.[0]?.message || error.message || "Unknown error";
+		res.status(500).json({ 
+			message: "Failed to send OTP email", 
+			error: errorMessage,
+			tip: "Check your server terminal for the OTP if you are in development mode." 
+		});
 	}
 };
 
 export const resetPasswordWithOTP = async (req, res) => {
 	try {
 		const { email, otp, password } = req.body;
+		console.log(`Attempting password reset for: ${email} with OTP: ${otp}`);
+		
 		if (!password || password.length < 6) {
-			return res.status(400).json({ message: "password must be at least 6 character" });
+			return res.status(400).json({ message: "password must be at least 6 characters" });
 		}
-		const user = await User.findOne({
-			email,
-			otp,
-			otpExpire: { $gt: Date.now() }
-		});
+		
+		const normalizedEmail = email.trim().toLowerCase();
+		const user = await User.findOne({ email: normalizedEmail });
+
 		if (!user) {
-			return res.status(400).json({ message: "Invalid or exprired OTP" });
+			console.log(`Reset failed: User not found for email ${normalizedEmail}`);
+			return res.status(404).json({ message: "User not found" });
 		}
+
+		if (user.otp !== otp) {
+			console.log(`Reset failed: Incorrect OTP for ${normalizedEmail}. Expected: ${user.otp}, Received: ${otp}`);
+			return res.status(400).json({ message: "Invalid OTP" });
+		}
+
+		if (user.otpExpire < Date.now()) {
+			console.log(`Reset failed: OTP expired for ${normalizedEmail}`);
+			return res.status(400).json({ message: "OTP has expired" });
+		}
+
 		user.password = password;
 		user.otp = undefined;
 		user.otpExpire = undefined;
